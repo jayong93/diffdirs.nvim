@@ -17,12 +17,12 @@ use nvim_oxi::{
 #[nvim_oxi::plugin]
 fn diffdirs() -> nvim_oxi::Result<Dictionary> {
     Ok(Dictionary::from_iter([(
-        "config",
-        Function::from_fn(config),
+        "setup",
+        Function::from_fn(setup),
     )]))
 }
 
-fn config(_: Object) {
+fn setup(_: Object) {
     api::create_user_command(
         "DiffDirs",
         show_diff,

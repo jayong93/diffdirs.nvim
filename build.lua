@@ -11,5 +11,7 @@ local machine = string.lower(os_uname.machine)
 
 local artifact_name = "diffdirs-"..os_name.."-"..machine.."-"..nvim_version..".so"
 
-vim.system({"curl", "-O", "diffdirs.so", "https://github.com/jayong93/diffdirs.nvim/release/download/0.0.0"..artifact_name},
-  {text = true}):wait()
+local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h")
+local download_url = "https://github.com/jayong93/diffdirs.nvim/releases/download/0.0.0/"..artifact_name
+vim.system({"mkdir", plugin_dir.."/lua"}, {text = true}):wait()
+vim.system({"curl", "-L", "-o", plugin_dir.."/lua/diffdirs.so", download_url}, {text = true}):wait()
