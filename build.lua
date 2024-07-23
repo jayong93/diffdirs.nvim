@@ -11,5 +11,5 @@ local machine = string.lower(os_uname.machine)
 
 local artifact_name = "diffdirs-"..os_name.."-"..machine.."-"..nvim_version..".so"
 
-vim.system({"curl", "-O", "diffdirs.so", "https://github.com/jayong93/diffdirs.nvim/release/latest/download/"..artifact_name},
+vim.system({"curl", "-O", "diffdirs.so", "https://github.com/jayong93/diffdirs.nvim/release/download/0.0.0"..artifact_name},
   {text = true}):wait()
