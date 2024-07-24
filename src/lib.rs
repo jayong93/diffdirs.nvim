@@ -1,3 +1,4 @@
+use error::Error;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -8,24 +9,28 @@ use nvim_oxi::{
     self,
     api::{
         self,
-        opts::{CmdOpts, CreateCommandOpts},
-        types::{CmdInfos, CommandArgs, CommandModifiers, CommandNArgs},
+        opts::{CmdOpts, CreateCommandOpts, SetKeymapOpts},
+        types::{CmdInfos, CommandArgs, CommandModifiers, CommandNArgs, Mode},
+        Buffer,
     },
-    print, Dictionary, Function, Object,
+    print, Array, Dictionary, Function, Object,
 };
+
+mod error;
 
 #[nvim_oxi::plugin]
 fn diffdirs() -> nvim_oxi::Result<Dictionary> {
-    Ok(Dictionary::from_iter([(
-        "setup",
-        Function::from_fn(setup),
-    )]))
+    Ok(Dictionary::from_iter([("setup", Function::from_fn(setup))]))
 }
 
 fn setup(_: Object) {
     api::create_user_command(
         "DiffDirs",
-        show_diff,
+        |args| -> Result<(), Error> {
+            setup_keymap()?;
+            show_diff(args)?;
+            Ok(())
+        },
         &CreateCommandOpts::builder()
             .desc("Show diff for two directories")
             .nargs(CommandNArgs::OneOrMore)
@@ -35,22 +40,63 @@ fn setup(_: Object) {
     .ok();
 }
 
-fn show_diff(args: CommandArgs) {
+fn setup_keymap() -> Result<(), Error> {
+    api::command("set switchbuf+=usetab")?;
+    api::set_keymap(
+        Mode::Normal,
+        "[q",
+        ":silent cp!<cr>",
+        &SetKeymapOpts::builder()
+            .desc("Previous diff tab")
+            .noremap(true)
+            .silent(true)
+            .build(),
+    )?;
+    api::set_keymap(
+        Mode::Normal,
+        "]q",
+        ":silent cn!<cr>",
+        &SetKeymapOpts::builder()
+            .desc("Next diff tab")
+            .noremap(true)
+            .silent(true)
+            .build(),
+    )?;
+    Ok(())
+}
+
+fn show_diff(args: CommandArgs) -> Result<(), Error> {
     let cmd_args = &args.fargs;
     match cmd_args.as_slice() {
         [left_dir, right_dir] => {
             let left_dir = Path::new(left_dir);
             let right_dir = Path::new(right_dir);
             let files = make_file_set(left_dir, right_dir);
+
+            let first_tabpage = api::get_current_tabpage();
+            let mut is_first_cmd = true;
+            api::call_function::<_, usize>("setqflist", (Array::new(), 'r'))?;
             for file in files {
-                show_diff_tab(&left_dir.join(&file), &right_dir.join(&file))
-                    .map_err(|err| print!("error: failed to show diff tab: {err}"))
-                    .ok();
+                let left_file = left_dir.join(&file);
+                let right_file = right_dir.join(&file);
+                show_diff_tab(&left_file, &right_file, is_first_cmd)?;
+                let right_buf = Buffer::current();
+                let mut qflist_entry = Dictionary::new();
+                qflist_entry.insert("bufnr", right_buf.handle());
+                qflist_entry.insert("filename", right_file.to_string_lossy());
+                qflist_entry.insert("text", file.to_string_lossy());
+                api::call_function::<_, usize>(
+                    "setqflist",
+                    (Array::from_iter([qflist_entry]), 'a'),
+                )?;
+                is_first_cmd = false;
             }
+            api::set_current_tabpage(&first_tabpage)?;
+            Ok(())
         }
-        _ => {
-            print!("error: the number of arguments for 'DiffDirs' command wasn't 2");
-        }
+        _ => Err(Error::other(
+            "the number of arguments for 'DiffDirs' command wasn't 2",
+        )),
     }
 }
 
@@ -88,10 +134,11 @@ fn make_file_set(left_dir: &Path, right_dir: &Path) -> BTreeSet<PathBuf> {
     file_set
 }
 
-fn show_diff_tab(left_file: &Path, right_file: &Path) -> Result<(), api::Error> {
+fn show_diff_tab(left_file: &Path, right_file: &Path, is_first: bool) -> Result<(), Error> {
     let cmd_opt = CmdOpts::builder().output(false).build();
+    let new_tab_cmd_str = if is_first { "edit" } else { "tabedit" };
     let new_tab_cmd = CmdInfos::builder()
-        .cmd("tabedit")
+        .cmd(new_tab_cmd_str)
         .args([left_file.to_string_lossy()])
         .nextcmd("difft")
         .build();
@@ -102,7 +149,10 @@ fn show_diff_tab(left_file: &Path, right_file: &Path) -> Result<(), api::Error> 
         .args([right_file.to_string_lossy()])
         .mods(command_mod)
         .build();
+
     api::cmd(&new_tab_cmd, &cmd_opt)?;
+    api::command("set winfixbuf | set nomodifiable")?;
     api::cmd(&diff_tab_cmd, &cmd_opt)?;
+    api::command("set winfixbuf | set modifiable")?;
     Ok(())
 }
