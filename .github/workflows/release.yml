@@ -31,6 +31,7 @@ jobs:
       - name: Ensure toolchain
         run: rustup target add ${{ matrix.target }}
       - name: Build
+        working-directory: ${{ github.workspace }}
         run: cargo build --target ${{ matrix.target }} --release && mv target/release/libdiffdirs.${{ matrix.ext }} target/release/${{ matrix.asset_name }}
       - uses: softprops/action-gh-release@v2
         with:
