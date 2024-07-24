@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [profile.release]
 debug="line-tables-only"
+strip="debuginfo"
 
 [dependencies]
 anyhow = "1.0.86"
