@@ -32,8 +32,9 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build
         working-directory: ${{ github.workspace }}
-        run: cargo build --target ${{ matrix.target }} --release && mv target/release/libdiffdirs.${{ matrix.ext }} target/release/${{ matrix.asset_name }}
+        run: cargo build --target ${{ matrix.target }} --release && mv target/${{ matrix.target }}/release/libdiffdirs.${{ matrix.ext }} ${{ matrix.asset_name }}
       - uses: softprops/action-gh-release@v2
+        working-directory: ${{ github.workspace }}
         with:
           draft: true
-          files: target/release/${{ matrix.asset_name }}
+          files: ${{ matrix.asset_name }}
