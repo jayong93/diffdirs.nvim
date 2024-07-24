@@ -16,17 +16,22 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             asset_name: diffdirs-linux-amd64-neovim-0-10.so
+            ext: so
           - target: x86_64-apple-darwin
             os: macos-latest
             asset_name: diffdirs-darwin-amd64-neovim-0-10.so
+            ext: dylib
           - target: aarch64-apple-darwin
             os: macos-latest
             asset_name: diffdirs-darwin-arm64-neovim-0-10.so
+            ext: dylib
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Ensure toolchain
+        run: rustup target add ${{ matrix.target }}
       - name: Build
-        run: cargo build --target ${{ matrix.target }} --release && mv target/release/libdiffdirs* target/release/${{ matrix.asset_name }}
+        run: cargo build --target ${{ matrix.target }} --release && mv target/release/libdiffdirs.${{ matrix.ext }} target/release/${{ matrix.asset_name }}
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
