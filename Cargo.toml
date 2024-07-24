@@ -4,11 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
+path = "src/lib.rs"
+name = "diffdirs"
 crate-type = ["cdylib"]
 
 [profile.release]
-strip = "debuginfo"
+debug="line-tables-only"
 
 [dependencies]
+anyhow = "1.0.86"
 nvim-oxi = { version = "0.5", features = ["neovim-0-10"] }
+thiserror = "1.0.63"
 walkdir = "2.5"
