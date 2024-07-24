@@ -9,7 +9,17 @@ on:
       - v[0-9]+.[0-9]+.[0-9]+*
 
 jobs:
-  create-release-with-assets:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: softprops/action-gh-release@v2
+        id: release
+        with:
+          draft: true
+  update-assets:
+    needs: create-release
     strategy:
       matrix:
         include:
@@ -31,10 +41,18 @@ jobs:
       - name: Ensure toolchain
         run: rustup target add ${{ matrix.target }}
       - name: Build
-        working-directory: ${{ github.workspace }}
         run: cargo build --target ${{ matrix.target }} --release && mv target/${{ matrix.target }}/release/libdiffdirs.${{ matrix.ext }} ${{ matrix.asset_name }}
-      - uses: softprops/action-gh-release@v2
-        working-directory: ${{ github.workspace }}
+      - name: Upload asset
+        uses: actions/github-script@v7
         with:
-          draft: true
-          files: ${{ matrix.asset_name }}
+          script: |
+            const fs = require('node:fs');
+            const data = fs.readFileSync("${{ matrix.asset_name }}");
+            const repo_info = "${{ github.repository }}".split("/")
+            github.rest.repos.uploadReleaseAsset({
+              owner: repo_info[0],
+              repo: repo_info[1],
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              name: "${{ matrix.asset_name }}",
+              data: data
+            });
