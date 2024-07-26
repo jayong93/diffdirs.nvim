@@ -25,11 +25,11 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            asset_name: diffdirs-linux-amd64-neovim-0-10.so
+            asset_name: diffdirs-linux-x86_64-neovim-0-10.so
             ext: so
           - target: x86_64-apple-darwin
             os: macos-latest
-            asset_name: diffdirs-darwin-amd64-neovim-0-10.so
+            asset_name: diffdirs-darwin-x86_64-neovim-0-10.so
             ext: dylib
           - target: aarch64-apple-darwin
             os: macos-latest
