@@ -1,4 +1,4 @@
-use error::Error;
+use error::Error as DiffDirsError;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -26,7 +26,7 @@ fn diffdirs() -> nvim_oxi::Result<Dictionary> {
 fn setup(_: Object) {
     api::create_user_command(
         "DiffDirs",
-        |args| -> Result<(), Error> {
+        |args| -> Result<(), DiffDirsError> {
             setup_keymap()?;
             show_diff(args)?;
             Ok(())
@@ -40,7 +40,7 @@ fn setup(_: Object) {
     .ok();
 }
 
-fn setup_keymap() -> Result<(), Error> {
+fn setup_keymap() -> Result<(), DiffDirsError> {
     api::command("set switchbuf+=usetab")?;
     api::set_keymap(
         Mode::Normal,
@@ -65,7 +65,7 @@ fn setup_keymap() -> Result<(), Error> {
     Ok(())
 }
 
-fn show_diff(args: CommandArgs) -> Result<(), Error> {
+fn show_diff(args: CommandArgs) -> Result<(), DiffDirsError> {
     let cmd_args = &args.fargs;
     match cmd_args.as_slice() {
         [left_dir, right_dir] => {
@@ -94,7 +94,7 @@ fn show_diff(args: CommandArgs) -> Result<(), Error> {
             api::set_current_tabpage(&first_tabpage)?;
             Ok(())
         }
-        _ => Err(Error::other(
+        _ => Err(DiffDirsError::other(
             "the number of arguments for 'DiffDirs' command wasn't 2",
         )),
     }
@@ -134,7 +134,7 @@ fn make_file_set(left_dir: &Path, right_dir: &Path) -> BTreeSet<PathBuf> {
     file_set
 }
 
-fn show_diff_tab(left_file: &Path, right_file: &Path, is_first: bool) -> Result<(), Error> {
+fn show_diff_tab(left_file: &Path, right_file: &Path, is_first: bool) -> Result<(), DiffDirsError> {
     let cmd_opt = CmdOpts::builder().output(false).build();
     let new_tab_cmd_str = if is_first { "edit" } else { "tabedit" };
     let new_tab_cmd = CmdInfos::builder()
