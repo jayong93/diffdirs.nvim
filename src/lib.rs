@@ -44,7 +44,7 @@ fn setup_keymap() -> Result<(), DiffDirsError> {
     api::command("set switchbuf+=usetab")?;
     api::set_keymap(
         Mode::Normal,
-        "[q",
+        "<Plug>PrevDiff",
         ":silent cp!<cr>",
         &SetKeymapOpts::builder()
             .desc("Previous diff tab")
@@ -54,7 +54,7 @@ fn setup_keymap() -> Result<(), DiffDirsError> {
     )?;
     api::set_keymap(
         Mode::Normal,
-        "]q",
+        "<Plug>NextDiff",
         ":silent cn!<cr>",
         &SetKeymapOpts::builder()
             .desc("Next diff tab")
