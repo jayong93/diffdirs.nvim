@@ -1,6 +1,7 @@
 use error::Error as DiffDirsError;
 use std::{
-    collections::BTreeSet,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
@@ -11,20 +12,32 @@ use nvim_oxi::{
         self,
         opts::{CmdOpts, CreateCommandOpts, SetKeymapOpts},
         types::{CmdInfos, CommandArgs, CommandModifiers, CommandNArgs, Mode},
-        Buffer,
+        Buffer, StringOrFunction, TabPage,
     },
     print, Array, Dictionary, Function, Object,
 };
 
 mod error;
 
-#[nvim_oxi::plugin]
-fn diffdirs() -> nvim_oxi::Result<Dictionary> {
-    Ok(Dictionary::from_iter([("setup", Function::from_fn(setup))]))
+thread_local! {
+    static DIFF_FILES: RefCell<BTreeMap<PathBuf, TabPage>> = const {RefCell::new(BTreeMap::new())};
+    static DIFF_DIRS: RefCell<(PathBuf, PathBuf)> = RefCell::new(Default::default());
 }
 
-fn setup(_: Object) {
-    api::create_user_command(
+#[nvim_oxi::plugin]
+fn diffdirs() -> nvim_oxi::Result<Dictionary> {
+    let setup_fn: Function<Object, Result<(), DiffDirsError>> = Function::from_fn(setup);
+    let jumb_tab_fn: Function<String, Result<(), DiffDirsError>> =
+        Function::from_fn(jump_to_diff_tab);
+    Ok(Dictionary::from_iter([
+        ("setup", setup_fn.to_object()),
+        ("diff_files", Function::from_fn(diff_files).to_object()),
+        ("jump_diff_tab", jumb_tab_fn.to_object()),
+    ]))
+}
+
+fn setup(_: Object) -> Result<(), DiffDirsError> {
+    Ok(api::create_user_command(
         "DiffDirs",
         |args| -> Result<(), DiffDirsError> {
             setup_keymap()?;
@@ -35,9 +48,35 @@ fn setup(_: Object) {
             .desc("Show diff for two directories")
             .nargs(CommandNArgs::OneOrMore)
             .build(),
-    )
-    .map_err(|err| print!("failed to register command DiffDirs: {err}"))
-    .ok();
+    )?)
+}
+
+fn diff_files(_: ()) -> Vec<String> {
+    DIFF_FILES.with_borrow(|files| {
+        files
+            .keys()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect()
+    })
+}
+
+fn jump_to_diff_tab(path: String) -> Result<(), DiffDirsError> {
+    DIFF_FILES.with_borrow_mut(|files| {
+        files
+            .get_mut(<str as AsRef<Path>>::as_ref(&path))
+            .ok_or_else(|| DiffDirsError::other(format!("invalid diff path: {path}")))
+            .and_then(|tab| {
+                if tab.is_valid() {
+                    Ok(api::set_current_tabpage(tab)?)
+                } else {
+                    DIFF_DIRS.with_borrow(|(left_dir, right_dir)| {
+                        show_diff_tab(&left_dir.join(&path), &right_dir.join(&path), false)?;
+                        *tab = api::get_current_tabpage();
+                        Ok(())
+                    })
+                }
+            })
+    })
 }
 
 fn setup_keymap() -> Result<(), DiffDirsError> {
@@ -71,11 +110,14 @@ fn show_diff(args: CommandArgs) -> Result<(), DiffDirsError> {
         [left_dir, right_dir] => {
             let left_dir = Path::new(left_dir);
             let right_dir = Path::new(right_dir);
+            DIFF_DIRS.replace((left_dir.to_owned(), right_dir.to_owned()));
             let files = make_file_set(left_dir, right_dir);
 
             let first_tabpage = api::get_current_tabpage();
             let mut is_first_cmd = true;
             api::call_function::<_, usize>("setqflist", (Array::new(), 'r'))?;
+
+            let mut path_tab_map = BTreeMap::new();
             for file in files {
                 let left_file = left_dir.join(&file);
                 let right_file = right_dir.join(&file);
@@ -90,8 +132,10 @@ fn show_diff(args: CommandArgs) -> Result<(), DiffDirsError> {
                     (Array::from_iter([qflist_entry]), 'a'),
                 )?;
                 is_first_cmd = false;
+                path_tab_map.insert(file, api::get_current_tabpage());
             }
             api::set_current_tabpage(&first_tabpage)?;
+            DIFF_FILES.replace(path_tab_map);
             Ok(())
         }
         _ => Err(DiffDirsError::other(
