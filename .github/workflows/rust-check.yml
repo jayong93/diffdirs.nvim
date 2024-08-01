@@ -24,6 +24,6 @@ jobs:
     - name: Ensure toolchain
       run: rustup target add ${{ matrix.target }}
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --features "neovim-0-10"
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --features "neovim-0-10"

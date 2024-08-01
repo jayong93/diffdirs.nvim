@@ -1,6 +1,6 @@
 [package]
 name = "diffdirs_nvim"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 
 [lib]
@@ -14,6 +14,11 @@ strip="debuginfo"
 
 [dependencies]
 anyhow = "1.0.86"
-nvim-oxi = { version = "0.5", features = ["neovim-0-10"] }
+nvim-oxi = { version = "0.5", default-features=false }
 thiserror = "1.0.63"
 walkdir = "2.5"
+
+[features]
+neovim-0-10 = ["nvim-oxi/neovim-0-10"]
+neovim-0-9 = ["nvim-oxi/neovim-0-9"]
+neovim-nightly = ["nvim-oxi/neovim-nightly"]
