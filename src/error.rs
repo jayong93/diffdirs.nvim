@@ -1,12 +1,26 @@
 use std::{backtrace::{Backtrace, BacktraceStatus}, fmt::Display};
 
+use derive_builder::UninitializedFieldError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorType {
     #[error(transparent)]
     NvimOxiError(nvim_oxi::Error),
+    #[error(transparent)]
+    BuilderError(#[from] BuilderError),
     #[error("other error: {0}")]
     Other(anyhow::Error)
 }
+
+impl<T> From<T> for ErrorType where T: Into<nvim_oxi::Error> {
+    fn from(value: T) -> Self {
+        Self::NvimOxiError(value.into())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub(crate) struct BuilderError(#[from] UninitializedFieldError);
 
 #[derive(Debug)]
 pub struct Error {
@@ -32,23 +46,17 @@ impl Display for Error {
     }
 }
 
-impl From<ErrorType> for Error {
-    fn from(value: ErrorType) -> Self {
-        Self {
-            error: value,
-            backtrace: Backtrace::capture()
-        }
-    }
-}
-
 impl Error {
     pub fn other(s: impl Display) -> Self {
         ErrorType::Other(anyhow::anyhow!("{s}")).into()
     }
 }
 
-impl<T> From<T> for Error where T: Into<nvim_oxi::Error> {
+impl<T> From<T> for Error where T: Into<ErrorType> {
     fn from(value: T) -> Self {
-        ErrorType::NvimOxiError(value.into()).into()
+        Self {
+            error: value.into(),
+            backtrace: Backtrace::capture()
+        }
     }
 }

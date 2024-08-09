@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- Support 3-pane diff mode and configs for window options
+
 ## [0.2.1] - 2024-08-08
 
 ### 🚀 Features

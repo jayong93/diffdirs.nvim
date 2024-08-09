@@ -14,7 +14,9 @@ strip="debuginfo"
 
 [dependencies]
 anyhow = "1.0.86"
+derive_builder = "0.20.0"
 nvim-oxi = { version = "0.5", default-features=false }
+serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0.63"
 walkdir = "2.5"
 
