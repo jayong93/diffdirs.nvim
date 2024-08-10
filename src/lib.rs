@@ -1,5 +1,4 @@
-use derive_builder::Builder;
-use error::{BuilderError, Error as DiffDirsError};
+use error::Error as DiffDirsError;
 use serde::Deserialize;
 use std::{
     cell::RefCell,
@@ -88,26 +87,25 @@ fn jump_to_diff_tab(path: String) -> Result<(), DiffDirsError> {
                 if tab.is_valid() {
                     Ok(api::set_current_tabpage(tab)?)
                 } else {
+                    let path = Path::new(&path);
                     DIFF_DIRS.with_borrow(|dirs| {
                         CONFIG.with_borrow(|config| {
                             match dirs {
                                 DiffDirType::Two(left_dir, right_dir) => {
-                                    DiffTabBuilder::default()
-                                        .left_file(&(left_dir.join(&path)))
-                                        .right_file(&(right_dir.join(&path)))
-                                        .config(config)
-                                        .build()?
-                                        .open(false)?;
+                                    TwoPaneDiff {
+                                        left_dir,
+                                        right_dir,
+                                    }
+                                    .open_diff_tab(path, "tabedit", config)?;
                                     *tab = api::get_current_tabpage();
                                 }
                                 DiffDirType::Three(left_dir, right_dir, output_dir) => {
-                                    DiffTabBuilder::default()
-                                        .left_file(&(left_dir.join(&path)))
-                                        .right_file(&(right_dir.join(&path)))
-                                        .output_file(output_dir.join(&path))
-                                        .config(config)
-                                        .build()?
-                                        .open(false)?;
+                                    ThreePaneDiff {
+                                        left_dir,
+                                        right_dir,
+                                        output_dir,
+                                    }
+                                    .open_diff_tab(path, "tabedit", config)?;
                                     *tab = api::get_current_tabpage();
                                 }
                             };
@@ -147,19 +145,32 @@ fn setup_keymap() -> Result<(), DiffDirsError> {
 fn show_diff(args: CommandArgs) -> Result<(), DiffDirsError> {
     let cmd_args = &args.fargs;
     CONFIG.with_borrow(|config| match cmd_args.as_slice() {
-        [left_dir, right_dir] => DiffContextBuilder::default()
-            .left_dir(Path::new(left_dir))
-            .right_dir(Path::new(right_dir))
-            .config(config)
-            .build()?
-            .open_tabs(),
-        [left_dir, right_dir, output_dir] => DiffContextBuilder::default()
-            .left_dir(Path::new(left_dir))
-            .right_dir(Path::new(right_dir))
-            .output_dir(Path::new(output_dir))
-            .config(config)
-            .build()?
-            .open_tabs(),
+        [left_dir, right_dir] => {
+            let left_dir = Path::new(left_dir);
+            let right_dir = Path::new(right_dir);
+            DIFF_DIRS.replace(DiffDirType::Two(left_dir.to_owned(), right_dir.to_owned()));
+            TwoPaneDiff {
+                left_dir,
+                right_dir,
+            }
+            .diff_files(config)
+        }
+        [left_dir, right_dir, output_dir] => {
+            let left_dir = Path::new(left_dir);
+            let right_dir = Path::new(right_dir);
+            let output_dir = Path::new(output_dir);
+            DIFF_DIRS.replace(DiffDirType::Three(
+                left_dir.to_owned(),
+                right_dir.to_owned(),
+                output_dir.to_owned(),
+            ));
+            ThreePaneDiff {
+                left_dir,
+                right_dir,
+                output_dir,
+            }
+            .diff_files(config)
+        }
         _ => Err(DiffDirsError::other(
             "the number of arguments for 'DiffDirs' command wasn't 2",
         )),
@@ -194,37 +205,47 @@ fn collect_file_paths(dir: &Path) -> BTreeSet<PathBuf> {
         .collect()
 }
 
-fn make_file_set(left_dir: &Path, right_dir: &Path) -> BTreeSet<PathBuf> {
-    let mut file_set: BTreeSet<PathBuf> = collect_file_paths(left_dir);
-    file_set.extend(collect_file_paths(right_dir));
-    file_set
+fn init_diff_tab(
+    cmd_str: &str,
+    cmd_opt: &CmdOpts,
+    file: &Path,
+    config: &config::Config,
+) -> Result<(), DiffDirsError> {
+    let new_tab_cmd = CmdInfos::builder()
+        .cmd(cmd_str)
+        .args([file.to_string_lossy()])
+        .nextcmd("difft")
+        .build();
+    api::cmd(&new_tab_cmd, cmd_opt)?;
+    config.set_left_diff_opt(api::get_current_win())?;
+    Ok(())
 }
 
-#[derive(Debug, Builder)]
-#[builder(build_fn(error = "BuilderError"))]
-struct DiffContext<'a, 'b> {
-    left_dir: &'a Path,
-    right_dir: &'a Path,
-    #[builder(default, setter(into, strip_option))]
-    output_dir: Option<&'a Path>,
-    config: &'b config::Config,
+fn split_diff_win(
+    cmd_mod: &CommandModifiers,
+    cmd_opt: &CmdOpts,
+    file: &Path,
+) -> Result<(), DiffDirsError> {
+    let split_cmd = CmdInfos::builder()
+        .cmd("diffs")
+        .args([file.to_string_lossy()])
+        .mods(*cmd_mod)
+        .build();
+    api::cmd(&split_cmd, cmd_opt)?;
+    Ok(())
 }
 
-impl<'a, 'b> DiffContext<'a, 'b> {
-    fn open_tabs(&self) -> Result<(), DiffDirsError> {
-        if let Some(output_dir) = self.output_dir {
-            DIFF_DIRS.replace(DiffDirType::Three(
-                self.left_dir.to_owned(),
-                self.right_dir.to_owned(),
-                output_dir.to_owned(),
-            ));
-        } else {
-            DIFF_DIRS.replace(DiffDirType::Two(
-                self.left_dir.to_owned(),
-                self.right_dir.to_owned(),
-            ));
-        }
-        let files = make_file_set(self.left_dir, self.right_dir);
+trait ShowDiff {
+    fn base_paths(&self) -> (&Path, &Path);
+    fn open_diff_tab(
+        &self,
+        file: &Path,
+        cmd_str: &str,
+        config: &config::Config,
+    ) -> Result<(Buffer, PathBuf), DiffDirsError>;
+
+    fn diff_files(&self, config: &config::Config) -> Result<(), DiffDirsError> {
+        let files = self.make_file_set();
 
         let first_tabpage = api::get_current_tabpage();
         let mut is_first_cmd = true;
@@ -232,22 +253,8 @@ impl<'a, 'b> DiffContext<'a, 'b> {
 
         let mut path_tab_map = BTreeMap::new();
         for file in files {
-            let left_file = self.left_dir.join(&file);
-            let right_file = self.right_dir.join(&file);
-            let mut tab_builder = DiffTabBuilder::default();
-            tab_builder
-                .config(self.config)
-                .left_file(&left_file)
-                .right_file(&right_file);
-            let modifiable_file = if let Some(output_dir) = self.output_dir {
-                let output_file = output_dir.join(&file);
-                tab_builder.output_file(output_file.clone());
-                output_file
-            } else {
-                right_file.clone()
-            };
-            tab_builder.build()?.open(is_first_cmd)?;
-            let modifiable_buf = Buffer::current();
+            let (modifiable_buf, modifiable_file) =
+                self.open_diff_tab(&file, if is_first_cmd { "edit" } else { "tabedit" }, config)?;
             let mut qflist_entry = Dictionary::new();
             qflist_entry.insert("bufnr", modifiable_buf.handle());
             qflist_entry.insert("filename", modifiable_file.to_string_lossy());
@@ -260,64 +267,72 @@ impl<'a, 'b> DiffContext<'a, 'b> {
         DIFF_FILES.replace(path_tab_map);
         Ok(())
     }
+    fn make_file_set(&self) -> BTreeSet<PathBuf> {
+        let (left_dir, right_dir) = self.base_paths();
+        let mut file_set: BTreeSet<PathBuf> = collect_file_paths(left_dir);
+        file_set.extend(collect_file_paths(right_dir));
+        file_set
+    }
 }
 
-#[derive(Debug, Builder)]
-#[builder(build_fn(error = "BuilderError"))]
-struct DiffTab<'a, 'b> {
-    left_file: &'a Path,
-    right_file: &'a Path,
-    #[builder(default, setter(into, strip_option))]
-    output_file: Option<PathBuf>,
-    config: &'b config::Config,
+struct TwoPaneDiff<'a> {
+    left_dir: &'a Path,
+    right_dir: &'a Path,
 }
 
-impl<'a, 'b> DiffTab<'a, 'b> {
-    fn open(&self, is_first: bool) -> Result<(), DiffDirsError> {
+impl<'a> ShowDiff for TwoPaneDiff<'a> {
+    fn base_paths(&self) -> (&Path, &Path) {
+        (self.left_dir, self.right_dir)
+    }
+
+    fn open_diff_tab(
+        &self,
+        file: &Path,
+        cmd_str: &str,
+        config: &config::Config,
+    ) -> Result<(Buffer, PathBuf), DiffDirsError> {
         let cmd_opt = CmdOpts::builder().output(false).build();
-        let new_tab_cmd_str = if is_first { "edit" } else { "tabedit" };
-        let new_tab_cmd = CmdInfos::builder()
-            .cmd(new_tab_cmd_str)
-            .args([self.left_file.to_string_lossy()])
-            .nextcmd("difft")
-            .build();
-        let mut command_mod = CommandModifiers::default();
-        command_mod.vertical = true;
-        let diff_win_cmd = CmdInfos::builder()
-            .cmd("diffs")
-            .args([self.right_file.to_string_lossy()])
-            .mods(command_mod)
-            .build();
+        init_diff_tab(cmd_str, &cmd_opt, &self.left_dir.join(file), config)?;
 
-        api::cmd(&new_tab_cmd, &cmd_opt)?;
-        self.set_left_opt()?;
+        let mut cmd_mod = CommandModifiers::default();
+        cmd_mod.vertical = true;
+        let modifiable_file = self.right_dir.join(file);
+        split_diff_win(&cmd_mod, &cmd_opt, &modifiable_file)?;
+        config.set_right_diff_opt(api::get_current_win())?;
+        Ok((api::get_current_buf(), modifiable_file))
+    }
+}
 
-        api::cmd(&diff_win_cmd, &cmd_opt)?;
-        if let Some(output) = &self.output_file {
-            self.set_left_opt()?;
+struct ThreePaneDiff<'a> {
+    left_dir: &'a Path,
+    right_dir: &'a Path,
+    output_dir: &'a Path,
+}
 
-            let mut cmd_mod = CommandModifiers::default();
-            cmd_mod.split = Some(SplitModifier::BotRight);
-            let output_win_cmd = CmdInfos::builder()
-                .cmd("diffs")
-                .args([output.to_string_lossy()])
-                .mods(cmd_mod)
-                .build();
-            api::cmd(&output_win_cmd, &cmd_opt)?;
-        }
-        self.set_right_opt()?;
-        Ok(())
+impl<'a> ShowDiff for ThreePaneDiff<'a> {
+    fn base_paths(&self) -> (&Path, &Path) {
+        (self.left_dir, self.right_dir)
     }
 
-    #[inline]
-    fn set_left_opt(&self) -> Result<(), DiffDirsError> {
-        api::command("set winfixbuf | set nomodifiable")?;
-        self.config.set_left_diff_opt(api::get_current_win())
-    }
+    fn open_diff_tab(
+        &self,
+        file: &Path,
+        cmd_str: &str,
+        config: &config::Config,
+    ) -> Result<(Buffer, PathBuf), DiffDirsError> {
+        let cmd_opt = CmdOpts::builder().output(false).build();
+        init_diff_tab(cmd_str, &cmd_opt, &self.left_dir.join(file), config)?;
 
-    #[inline]
-    fn set_right_opt(&self) -> Result<(), DiffDirsError> {
-        api::command("set winfixbuf | set modifiable")?;
-        self.config.set_right_diff_opt(api::get_current_win())
+        let mut cmd_mod = CommandModifiers::default();
+        cmd_mod.vertical = true;
+        split_diff_win(&cmd_mod, &cmd_opt, &self.right_dir.join(file))?;
+        config.set_left_diff_opt(api::get_current_win())?;
+
+        let modifiable_file = self.output_dir.join(file);
+        let mut cmd_mod = CommandModifiers::default();
+        cmd_mod.split = Some(SplitModifier::BotRight);
+        split_diff_win(&cmd_mod, &cmd_opt, &modifiable_file)?;
+        config.set_right_diff_opt(api::get_current_win())?;
+        Ok((api::get_current_buf(), modifiable_file))
     }
 }

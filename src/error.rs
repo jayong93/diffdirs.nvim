@@ -1,13 +1,9 @@
 use std::{backtrace::{Backtrace, BacktraceStatus}, fmt::Display};
 
-use derive_builder::UninitializedFieldError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorType {
     #[error(transparent)]
     NvimOxiError(nvim_oxi::Error),
-    #[error(transparent)]
-    BuilderError(#[from] BuilderError),
     #[error("other error: {0}")]
     Other(anyhow::Error)
 }
@@ -17,10 +13,6 @@ impl<T> From<T> for ErrorType where T: Into<nvim_oxi::Error> {
         Self::NvimOxiError(value.into())
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub(crate) struct BuilderError(#[from] UninitializedFieldError);
 
 #[derive(Debug)]
 pub struct Error {

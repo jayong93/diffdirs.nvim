@@ -1,4 +1,4 @@
-use nvim_oxi::{api::Window, Function};
+use nvim_oxi::{api::{self, Window}, Function};
 use serde::Deserialize;
 
 use crate::error::Error as DiffDirsError;
@@ -15,6 +15,7 @@ impl Config {
     }
 
     pub fn set_left_diff_opt(&self, win: Window) -> Result<(), DiffDirsError> {
+        api::command("set winfixbuf | set nomodifiable")?;
         if let Some(f) = &self.left_diff_opt_fn {
             f.call(win)?;
         }
@@ -22,6 +23,7 @@ impl Config {
     }
 
     pub fn set_right_diff_opt(&self, win: Window) -> Result<(), DiffDirsError> {
+        api::command("set winfixbuf | set modifiable")?;
         if let Some(f) = &self.right_diff_opt_fn {
             f.call(win)?;
         }
