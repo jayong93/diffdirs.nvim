@@ -14,7 +14,7 @@ local machine = string.lower(os_uname.machine)
 local artifact_name = "diffdirs-" .. os_name .. "-" .. machine .. "-" .. nvim_version .. ".so"
 
 local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h")
-local download_url = "https://github.com/jayong93/diffdirs.nvim/releases/download/v0.2.1/" .. artifact_name
+local download_url = "https://github.com/jayong93/diffdirs.nvim/releases/download/v0.2.2-alpha.1/" .. artifact_name
 
 ---@param cmd string
 ---@param opts table
