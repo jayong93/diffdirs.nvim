@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - Support 3-pane diff mode and configs for window options
 
+### 🚜 Refactor
+
+- Use a trait to reduce branches
+
 ### ⚙️ Miscellaneous Tasks
 
 - Change build script for v0.2.2-alpha.1
