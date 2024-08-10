@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - Support 3-pane diff mode and configs for window options
 
+### ⚙️ Miscellaneous Tasks
+
+- Change build script for v0.2.2-alpha.1
+
 ## [0.2.1] - 2024-08-08
 
 ### 🚀 Features
